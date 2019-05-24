@@ -21,18 +21,22 @@ int DFT(int* data, int samples, int sample_rate)
     _q temp = 0;
     int bucket = 0;
 
-    int cos_mod = 0;
+    _q cos_mod = 0;
+    _q cos_arg = 0;
+    _q q_data = 0;
 
-    const _q10 Q_2PI = 6434;
+    const _q10 Q_2PI = 6434; //2 * pi * 2^10
     for (; n<samples; n++) {
         real = 0;
         imag = 0;
         temp = 0;
         for (k=0;k<samples;k++) {
-            cos_mod = n*k % samples;
+            cos_mod = _Q(n*k % samples);
+            cos_arg = _Qdiv(_Qmpy(Q_2PI, cos_mod), _Q(samples));
+            q_data = _Q(data[k]);
 
-            real =_Qmpy(_Q(data[k]), _Qcos(_Qdiv(_Qmpy(Q_2PI, cos_mod), samples)));
-            imag =_Qmpy(_Q(data[k]), _Qsin(_Qdiv(_Qmpy(Q_2PI, cos_mod), samples)));
+            real =_Qmpy(q_data, _Qcos(cos_arg));
+            imag =_Qmpy(q_data, _Qsin(cos_arg));
             //real = data[k]*cos((2*M_PI*n*k)/samples);
             //imag = data[k]*sin((2*M_PI*n*k)/samples);
             temp =_Qmag(imag, real);

@@ -1,4 +1,3 @@
-#define TIMER_PERIOD 511
 #include "driverlib.h"
 #include "Board.h"
 #include "DFT.h"
@@ -59,36 +58,24 @@ void main(void)
     //Set MCLK = DCO with frequency divider of 1
     CS_initClockSignal(CS_MCLK,CS_DCOCLKDIV_SELECT,CS_CLOCK_DIVIDER_1);
 
-    // Start timer
 
-         Timer_A_initUpModeParam param = {0};
-         param.clockSource = TIMER_A_CLOCKSOURCE_SMCLK;
-         param.clockSourceDivider = TIMER_A_CLOCKSOURCE_DIVIDER_1;
-         param.timerPeriod = TIMER_PERIOD;
-         param.timerInterruptEnable_TAIE = TIMER_A_TAIE_INTERRUPT_DISABLE;
-         param.captureCompareInterruptEnable_CCR0_CCIE = TIMER_A_CCIE_CCR0_INTERRUPT_DISABLE;
-         param.timerClear = TIMER_A_DO_CLEAR;
-         param.startTimer = true;
-         Timer_A_initUpMode(TIMER_A0_BASE, &param);
+    // ADC set-up
+
+    GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Anolog Input
 
 
-         // ADC set-up
+    ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_SMCLK, ADC_CLOCKDIVIDER_4);
+    ADC_enable(ADC_BASE);
+    ADC_setupSamplingTimer(ADC_BASE, ADC_CYCLEHOLD_8_CYCLES, ADC_MULTIPLESAMPLESENABLE);        // timer trigger needed to start every ADC conversion
+    ADC_configureMemory(ADC_BASE, ADC_INPUT_A8, ADC_VREFPOS_INT, ADC_VREFNEG_AVSS);
+    ADC_clearInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  bit mask of the interrupt flags to be cleared- for new conversion data in the memory buffer
+    ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  enable source to reflected to the processor interrupt
 
-          GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Anolog Input
+    while (PMM_REFGEN_NOTREADY == PMM_getVariableReferenceVoltageStatus()) ;
 
+    PMM_enableInternalReference();      // disabled by default
 
-          ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_SMCLK, ADC_CLOCKDIVIDER_4);
-          ADC_enable(ADC_BASE);
-          ADC_setupSamplingTimer(ADC_BASE, ADC_CYCLEHOLD_8_CYCLES, ADC_MULTIPLESAMPLESENABLE);        // timer trigger needed to start every ADC conversion
-          ADC_configureMemory(ADC_BASE, ADC_INPUT_A8, ADC_VREFPOS_INT, ADC_VREFNEG_AVSS);
-          ADC_clearInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  bit mask of the interrupt flags to be cleared- for new conversion data in the memory buffer
-          ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  enable source to reflected to the processor interrupt
-
-          while (PMM_REFGEN_NOTREADY == PMM_getVariableReferenceVoltageStatus()) ;
-
-          PMM_enableInternalReference();      // disabled by default
-
-          __bis_SR_register(GIE);
+    __bis_SR_register(GIE);
 
     //Configure UART pins
     GPIO_setAsPeripheralModuleFunctionInputPin(
