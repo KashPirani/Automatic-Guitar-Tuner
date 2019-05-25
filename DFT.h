@@ -7,6 +7,8 @@
 
 #ifndef DFT_H_
 #define DFT_H_
+
+#define GLOBAL_Q 6
 #include "QmathLib.h"
 
 
@@ -25,7 +27,8 @@ int DFT(int* data, int samples, int sample_rate)
     _q cos_arg = 0;
     _q q_data = 0;
 
-    const _q10 Q_2PI = 6434; //2 * pi * 2^10
+    //const _q10 Q_2PI = 6434; //2 * pi * 2^10
+    const _q6 Q_2PI = 402; //2 * pi * 2^6
     for (; n<samples; n++) {
         real = 0;
         imag = 0;
@@ -33,10 +36,10 @@ int DFT(int* data, int samples, int sample_rate)
         for (k=0;k<samples;k++) {
             cos_mod = _Q(n*k % samples);
             cos_arg = _Qdiv(_Qmpy(Q_2PI, cos_mod), _Q(samples));
-            q_data = _Q(data[k]);
+            //q_data = _Q(data[k]);
 
-            real =_Qmpy(q_data, _Qcos(cos_arg));
-            imag =_Qmpy(q_data, _Qsin(cos_arg));
+            real =_Qmpy(data[k], _Qcos(cos_arg));
+            imag =_Qmpy(data[k], _Qsin(cos_arg));
             //real = data[k]*cos((2*M_PI*n*k)/samples);
             //imag = data[k]*sin((2*M_PI*n*k)/samples);
             temp =_Qmag(imag, real);

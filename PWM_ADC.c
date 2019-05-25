@@ -1,8 +1,9 @@
 #include "driverlib.h"
 #include "Board.h"
 #include "DFT.h"
+#include "stepper.h"
 
-#define BUFFER_SIZE 128
+#define BUFFER_SIZE 256
 
 int buf[BUFFER_SIZE];
 int buf_count = 0;
@@ -18,10 +19,10 @@ void printWord(char* word)
     return;
 }
 
-void itoa(unsigned int num) //TODO: fix this for large numbers
+void itoa(int num) //TODO: fix this for large numbers
 {
-    unsigned int numLen = 0;
-    unsigned int i = num;
+    int numLen = 0;
+    int i = num;
     while (i > 0)
     {
         i/=10;
@@ -29,7 +30,7 @@ void itoa(unsigned int num) //TODO: fix this for large numbers
     }
     char ret[32];
     i = 0;
-    unsigned int pow = 1;
+    int pow = 1;
     for(;i<numLen-1; i++){
         pow = pow*10;
     }
@@ -57,6 +58,10 @@ void main(void)
     CS_initClockSignal(CS_SMCLK,CS_DCOCLKDIV_SELECT,CS_CLOCK_DIVIDER_1);
     //Set MCLK = DCO with frequency divider of 1
     CS_initClockSignal(CS_MCLK,CS_DCOCLKDIV_SELECT,CS_CLOCK_DIVIDER_1);
+
+
+    // Stepper set-up
+    stepper_init();
 
 
     // ADC set-up
@@ -119,8 +124,12 @@ void main(void)
     __enable_interrupt();
     ADC_startConversion(0x0700, ADC_REPEATED_SINGLECHANNEL);
     int runcount = 0;
+    /*turn_deg(360L);
+    __delay_cycles(1000000);
+    turn_deg(-180L);*/
     while (1)
     {
+
         //itoa(buf[buf_count]);
         //printWord("\r\n");
         if (buf_count==BUFFER_SIZE)
@@ -150,7 +159,7 @@ void ADC_ISR (void)
         case  8: break; //ADCLO
         case 10: break; //ADCIN
         case 12:        //ADCIFG0 is ADC interrupt flag
-            buf[buf_count] = ADC_getResults(ADC_BASE);
+            buf[buf_count] = ADC_getResults(ADC_BASE) - 512;
             buf_count++;
             if (buf_count == BUFFER_SIZE)
             {
