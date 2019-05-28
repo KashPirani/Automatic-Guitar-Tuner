@@ -3,10 +3,26 @@
 #include "DFT.h"
 #include "stepper.h"
 
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 128
 
 int buf[BUFFER_SIZE];
+int out[BUFFER_SIZE];
+int out_dft[BUFFER_SIZE];
 int buf_count = 0;
+
+int data_buffer[128] = {256,306,354,398,437,469,493,507,
+512,507,493,469,437,398,354,306,
+256,206,158,114,75,43,19,5,
+0,5,19,43,75,114,158,206,256,306,354,398,437,469,493,507,
+512,507,493,469,437,398,354,306,
+256,206,158,114,75,43,19,5,
+0,5,19,43,75,114,158,206,256,306,354,398,437,469,493,507,
+512,507,493,469,437,398,354,306,
+256,206,158,114,75,43,19,5,
+0,5,19,43,75,114,158,206,256,306,354,398,437,469,493,507,
+512,507,493,469,437,398,354,306,
+256,206,158,114,75,43,19,5,
+0,5,19,43,75,114,158,206};
 
 void printWord(char* word)
 {
@@ -122,11 +138,11 @@ void main(void)
 
     // Enable global interrupts
     __enable_interrupt();
-    ADC_startConversion(0x0700, ADC_REPEATED_SINGLECHANNEL);
+    //ADC_startConversion(0x0700, ADC_REPEATED_SINGLECHANNEL);
     int runcount = 0;
-    /*turn_deg(360L);
+    turn_deg(360L);
     __delay_cycles(1000000);
-    turn_deg(-180L);*/
+    turn_deg(-180L);
     while (1)
     {
 
@@ -134,7 +150,30 @@ void main(void)
         //printWord("\r\n");
         if (buf_count==BUFFER_SIZE)
         {
-            itoa(DFT(buf,BUFFER_SIZE,31250));
+            //itoa(DFT(buf,BUFFER_SIZE,31250));
+            //printWord("\r\n");
+            //fft_helper(data_buffer, out, BUFFER_SIZE, 1);
+            DFT_test(data_buffer, out_dft, BUFFER_SIZE, 31250);
+            int i;
+//            int same = 1;
+            for (i = 0; i < BUFFER_SIZE; i++) {
+//                if (out[i] != out_dft[i]) {
+                  itoa(out_dft[i]);
+//                }
+//            }
+//            if (same) {
+//                printWord("yea");
+//            } else {
+//                printWord("nah");
+//            }
+            printWord(",");
+            }
+            /*printWord("\r\nFFT:\r\n");
+            for(i=0; i<128; i++)
+            {
+                itoa(out[i]);
+                printWord(", ");
+            }*/
             printWord("\r\n");
             runcount++;
             buf_count = 0;
