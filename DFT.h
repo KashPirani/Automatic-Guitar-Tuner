@@ -86,6 +86,48 @@ void DFT_test(int* data, int* out, int samples, int sample_rate)
     }
 }
 
+int qfft_helper(int* data, _q* out_real, _q* out_imag, int samples, int step_size)
+{
+	if (samples > 1) {
+		qfft_helper(data, out_real, out_imag, samples / 2, step_size * 2); //even
+        	qfft_helper(data + step_size, out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
+
+		_q factor_real, factor_imag, temp_real, temp_imag, cos_arg;
+		for (int i = 0; i < samples/2; i++) {
+			temp_real = out_real[i];
+			temp_imag = out_imag[i];
+
+			cos_arg = _Qdiv(_Qmpy(2*M_PI, i), _Q(samples));
+			
+			factor_real = _Qmpy(_Qcos(cos_arg), out_real[i + samples/2]) + _Qmpy(_Qsin(cos_arg), out_imag[i + samples/2]);
+			factor_imag = _Qmpy(_Qsin(cos_arg), -out_real[i + samples/2]) + _Qmpy(_Qcos(cos_arg), out_imag[i + samples/2]);
+
+			out_real[i] = temp_real + factor_real;
+			out_imag[i] = temp_imag + factor_imag;
+
+			out_real[i + samples/2] = temp_real - factor_real;
+			out_imag[i + samples/2] = temp_imag - factor_imag;
+		}
+	} else {
+		out_real[0] = data[0];
+	}
+}
+
+int FFT_test(int* data, double* out, int samples)
+{
+	_q out_real[BUF_SIZE];
+	_q out_imag[BUF_SIZE];
+	for (int i = 0; i < BUF_SIZE; i++) {
+		out_real[i] = data[i];
+		out_imag[i] = 0;
+	}
+	qfft_helper(data, out_real, out_imag, samples, 1);
+	//Fft_transformRadix2(out_real, out_imag, samples);
+	for (int i = 0; i < BUF_SIZE; i++) {
+		out[i] = sqrt(out_real[i]*out_real[i] + out_imag[i]*out_imag[i]);
+	}
+}
+
 int fft_helper(int* data, int* out, int samples, int step_size)
 {
     _q cur_max = 0;
