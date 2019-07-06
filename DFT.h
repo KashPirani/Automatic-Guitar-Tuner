@@ -8,11 +8,16 @@
 #ifndef DFT_H_
 #define DFT_H_
 
-#define GLOBAL_Q 3
+#define GLOBAL_Q 6
+#define GLOBAL_IQ 12
 #include "QmathLib.h"
+#include "IQmathLib.h"
 
 //const _q10 Q_2PI = 6434; //2 * pi * 2^10
-const _q3 Q_2PI = 50; //2 * pi * 2^3
+const _q6 Q_2PI = 402; //2 * pi * 2^6
+
+const _iq12 IQ_2PI = 25736; //2 * pi * 2^12
+//const _iq6 IQ_2PI = 402; //2 * pi * 2^6
 
 int DFT(int* data, int samples, int sample_rate)
 {
@@ -77,8 +82,8 @@ void DFT_test(int* data, int* out, int samples, int sample_rate)
             cos_arg = _Qdiv(_Qmpy(Q_2PI, cos_mod), _Q(samples));
             //q_data = _Q(data[k]);
 
-            real +=_Qmpy(data[k]-256, _Qcos(cos_arg));
-            imag +=_Qmpy(data[k]-256, _Qsin(cos_arg));
+            real +=_Qmpy(_Q(data[k]-16), _Qcos(cos_arg));
+            imag +=_Qmpy(_Q(data[k]-16), _Qsin(cos_arg));
             //real = data[k]*cos((2*M_PI*n*k)/samples);
             //imag = data[k]*sin((2*M_PI*n*k)/samples);
         }
@@ -86,18 +91,19 @@ void DFT_test(int* data, int* out, int samples, int sample_rate)
     }
 }
 
-int qfft_helper(int* data, _q* out_real, _q* out_imag, int samples, int step_size)
+void qfft_helper(int* data, _q* out_real, _q* out_imag, int samples, int step_size)
 {
 	if (samples > 1) {
 		qfft_helper(data, out_real, out_imag, samples / 2, step_size * 2); //even
-        	qfft_helper(data + step_size, out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
+        qfft_helper(data + step_size, out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
 
 		_q factor_real, factor_imag, temp_real, temp_imag, cos_arg;
-		for (int i = 0; i < samples/2; i++) {
+		int i;
+		for (i = 0; i < samples/2; i++) {
 			temp_real = out_real[i];
 			temp_imag = out_imag[i];
 
-			cos_arg = _Qdiv(_Qmpy(2*M_PI, i), _Q(samples));
+			cos_arg = _Qdiv(_Qmpy(Q_2PI, _Q(i)), _Q(samples));
 			
 			factor_real = _Qmpy(_Qcos(cos_arg), out_real[i + samples/2]) + _Qmpy(_Qsin(cos_arg), out_imag[i + samples/2]);
 			factor_imag = _Qmpy(_Qsin(cos_arg), -out_real[i + samples/2]) + _Qmpy(_Qcos(cos_arg), out_imag[i + samples/2]);
@@ -109,23 +115,59 @@ int qfft_helper(int* data, _q* out_real, _q* out_imag, int samples, int step_siz
 			out_imag[i + samples/2] = temp_imag - factor_imag;
 		}
 	} else {
-		out_real[0] = data[0];
+		out_real[0] = _Q(data[0]);
 	}
 }
 
-int FFT_test(int* data, double* out, int samples)
+void iqfft_helper(const int* data, _iq* out_real, _iq* out_imag, int samples, int step_size)
 {
-	_q out_real[BUF_SIZE];
-	_q out_imag[BUF_SIZE];
-	for (int i = 0; i < BUF_SIZE; i++) {
-		out_real[i] = data[i];
+    if (samples > 1) {
+        iqfft_helper(data, out_real, out_imag, samples / 2, step_size * 2); //even
+        iqfft_helper(data + step_size, out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
+
+        _iq factor_real, factor_imag, temp_real, temp_imag, cos_arg;
+        int i;
+        for (i = 0; i < samples/2; i++) {
+            temp_real = out_real[i];
+            temp_imag = out_imag[i];
+
+            cos_arg = _IQdiv(_IQmpy(IQ_2PI, _IQ(i)), _IQ(samples));
+
+            factor_real = _IQmpy(_IQcos(cos_arg), out_real[i + samples/2]) + _IQmpy(_IQsin(cos_arg), out_imag[i + samples/2]);
+            factor_imag = _IQmpy(_IQsin(cos_arg), -out_real[i + samples/2]) + _IQmpy(_IQcos(cos_arg), out_imag[i + samples/2]);
+
+            out_real[i] = temp_real + factor_real;
+            out_imag[i] = temp_imag + factor_imag;
+
+            out_real[i + samples/2] = temp_real - factor_real;
+            out_imag[i + samples/2] = temp_imag - factor_imag;
+        }
+    } else {
+        out_real[0] = _IQ(data[0]);
+    }
+}
+
+int32_t FFT_test(const int* data, int32_t* out, int samples, int sampling_rate)
+{
+	//_iq out_real[128];
+	_iq out_imag[256];
+	int i;
+	for (i = 0; i < samples; i++) {
+		//out_real[i] = 0;
 		out_imag[i] = 0;
 	}
-	qfft_helper(data, out_real, out_imag, samples, 1);
+	iqfft_helper(data, out, out_imag, samples, 1);
 	//Fft_transformRadix2(out_real, out_imag, samples);
-	for (int i = 0; i < BUF_SIZE; i++) {
-		out[i] = sqrt(out_real[i]*out_real[i] + out_imag[i]*out_imag[i]);
+	int32_t bucket, max = 0;
+	for (i = 0; i < samples; i++) {
+		out[i] = _IQint(_IQmag(out[i], out_imag[i]));
+		if (out[i] > max && i <= samples/2) {
+		    max = out[i];
+		    bucket = i;
+		}
 	}
+
+	return bucket * (sampling_rate / samples);
 }
 
 int fft_helper(int* data, int* out, int samples, int step_size)

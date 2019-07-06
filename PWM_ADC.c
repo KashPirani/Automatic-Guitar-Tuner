@@ -3,14 +3,16 @@
 #include "DFT.h"
 #include "stepper.h"
 
-#define BUFFER_SIZE 128
+#define BUFFER_SIZE 256
 
 int buf[BUFFER_SIZE];
-int out[BUFFER_SIZE];
-int out_dft[BUFFER_SIZE];
+int32_t out[BUFFER_SIZE];
+//int out_dft[BUFFER_SIZE];
 int buf_count = 0;
 
-int data_buffer[128] = {256,306,354,398,437,469,493,507,
+const int standard_tuning[6] = {82, 110, 147, 196, 247, 330};
+
+/*const int data_buffer[128] = {256,306,354,398,437,469,493,507,
 512,507,493,469,437,398,354,306,
 256,206,158,114,75,43,19,5,
 0,5,19,43,75,114,158,206,256,306,354,398,437,469,493,507,
@@ -23,6 +25,24 @@ int data_buffer[128] = {256,306,354,398,437,469,493,507,
 512,507,493,469,437,398,354,306,
 256,206,158,114,75,43,19,5,
 0,5,19,43,75,114,158,206};
+*/
+/*const int data_buffer[128] = {16,19,22,25,27,29,31,32,
+                        32,32,31,29,27,25,22,19,
+                        16,13,10,7,5,3,1,0,
+                        0,0,1,3,5,7,10,13,
+                        16,19,22,25,27,29,31,32,
+                        32,32,31,29,27,25,22,19,
+                        16,13,10,7,5,3,1,0,
+                        0,0,1,3,5,7,10,13,
+                        16,19,22,25,27,29,31,32,
+                        32,32,31,29,27,25,22,19,
+                        16,13,10,7,5,3,1,0,
+                        0,0,1,3,5,7,10,13,
+                        16,19,22,25,27,29,31,32,
+                        32,32,31,29,27,25,22,19,
+                        16,13,10,7,5,3,1,0,
+                        0,0,1,3,5,7,10,13};
+*/
 
 void printWord(char* word)
 {
@@ -35,10 +55,14 @@ void printWord(char* word)
     return;
 }
 
-void itoa(int num) //TODO: fix this for large numbers
+void itoa(int32_t num) //TODO: fix this for large numbers
 {
-    int numLen = 0;
-    int i = num;
+    if (num < 0) {
+        printWord("-");
+        num *= -1;
+    }
+    int32_t numLen = 0;
+    int32_t i = num;
     while (i > 0)
     {
         i/=10;
@@ -46,12 +70,12 @@ void itoa(int num) //TODO: fix this for large numbers
     }
     char ret[32];
     i = 0;
-    int pow = 1;
+    int32_t pow = 1;
     for(;i<numLen-1; i++){
         pow = pow*10;
     }
-    int dig = 0;
-    int count = 0;
+    int32_t dig = 0;
+    int32_t count = 0;
     while(pow > 0)
     {
         dig = (num/pow) % 10;
@@ -82,7 +106,7 @@ void main(void)
 
     // ADC set-up
 
-    GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Anolog Input
+    GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Analog Input
 
 
     ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_SMCLK, ADC_CLOCKDIVIDER_4);
@@ -138,11 +162,11 @@ void main(void)
 
     // Enable global interrupts
     __enable_interrupt();
-    //ADC_startConversion(0x0700, ADC_REPEATED_SINGLECHANNEL);
+    ADC_startConversion(0x0700, ADC_REPEATED_SINGLECHANNEL);
     int runcount = 0;
-    turn_deg(360L);
-    __delay_cycles(1000000);
-    turn_deg(-180L);
+    //turn_deg(360L);
+    //__delay_cycles(1000000);
+    //turn_deg(-180L);
     while (1)
     {
 
@@ -153,27 +177,24 @@ void main(void)
             //itoa(DFT(buf,BUFFER_SIZE,31250));
             //printWord("\r\n");
             //fft_helper(data_buffer, out, BUFFER_SIZE, 1);
-            DFT_test(data_buffer, out_dft, BUFFER_SIZE, 31250);
+            //DFT_test(data_buffer, out_dft, BUFFER_SIZE, 31250);
             int i;
-//            int same = 1;
+            printWord("\r\nInput:\r\n");
             for (i = 0; i < BUFFER_SIZE; i++) {
-//                if (out[i] != out_dft[i]) {
-                  itoa(out_dft[i]);
-//                }
-//            }
-//            if (same) {
-//                printWord("yea");
-//            } else {
-//                printWord("nah");
-//            }
-            printWord(",");
+                  itoa(buf[i]);
+                  printWord(",");
             }
-            /*printWord("\r\nFFT:\r\n");
-            for(i=0; i<128; i++)
+            printWord("\r\nFrequency: ");
+            itoa(FFT_test(buf, out, BUFFER_SIZE, 11628));
+            printWord("\r\nFFT:\r\n");
+            for(i=0; i<BUFFER_SIZE; i++)
             {
                 itoa(out[i]);
                 printWord(", ");
-            }*/
+                if (i % 16 == 0) {
+                    printWord("\r\n");
+                }
+            }
             printWord("\r\n");
             runcount++;
             buf_count = 0;
@@ -198,7 +219,7 @@ void ADC_ISR (void)
         case  8: break; //ADCLO
         case 10: break; //ADCIN
         case 12:        //ADCIFG0 is ADC interrupt flag
-            buf[buf_count] = ADC_getResults(ADC_BASE) - 512;
+            buf[buf_count] = (ADC_getResults(ADC_BASE) - 512);
             buf_count++;
             if (buf_count == BUFFER_SIZE)
             {
