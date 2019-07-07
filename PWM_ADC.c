@@ -3,9 +3,10 @@
 #include "DFT.h"
 #include "stepper.h"
 
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 128
 
-int buf[BUFFER_SIZE];
+int buf16[BUFFER_SIZE];
+int32_t buf[BUFFER_SIZE];
 int32_t out[BUFFER_SIZE];
 //int out_dft[BUFFER_SIZE];
 int buf_count = 0;
@@ -183,9 +184,11 @@ void main(void)
             for (i = 0; i < BUFFER_SIZE; i++) {
                   itoa(buf[i]);
                   printWord(",");
+                  itoa(buf[i]);
+                  printWord("\r\n");
             }
             printWord("\r\nFrequency: ");
-            itoa(FFT_test(buf, out, BUFFER_SIZE, 11628));
+            itoa(FFT_test(buf16, out, BUFFER_SIZE, 11628));
             printWord("\r\nFFT:\r\n");
             for(i=0; i<BUFFER_SIZE; i++)
             {
@@ -219,7 +222,8 @@ void ADC_ISR (void)
         case  8: break; //ADCLO
         case 10: break; //ADCIN
         case 12:        //ADCIFG0 is ADC interrupt flag
-            buf[buf_count] = (ADC_getResults(ADC_BASE) - 512);
+            buf16[buf_count] = (ADC_getResults(ADC_BASE) - 512);
+            buf[buf_count] = buf16[buf_count];
             buf_count++;
             if (buf_count == BUFFER_SIZE)
             {

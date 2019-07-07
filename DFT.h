@@ -119,11 +119,26 @@ void qfft_helper(int* data, _q* out_real, _q* out_imag, int samples, int step_si
 	}
 }
 
-void iqfft_helper(const int* data, _iq* out_real, _iq* out_imag, int samples, int step_size)
+unsigned int reverseBits(unsigned int num, unsigned int bits)
+{
+    unsigned int reverse_num = 0;
+    int i;
+
+    for(i = 0; i < bits; i++)
+    {
+       reverse_num |= num & 1;
+       num >>= 1;
+       reverse_num<<=1;
+    }
+    reverse_num >>= 1;
+    return reverse_num;
+}
+
+void iqfft_helper(_iq* out_real, _iq* out_imag, int samples, int step_size)
 {
     if (samples > 1) {
-        iqfft_helper(data, out_real, out_imag, samples / 2, step_size * 2); //even
-        iqfft_helper(data + step_size, out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
+        iqfft_helper(out_real, out_imag, samples / 2, step_size * 2); //even
+        iqfft_helper(out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
 
         _iq factor_real, factor_imag, temp_real, temp_imag, cos_arg;
         int i;
@@ -143,24 +158,27 @@ void iqfft_helper(const int* data, _iq* out_real, _iq* out_imag, int samples, in
             out_imag[i + samples/2] = temp_imag - factor_imag;
         }
     } else {
-        out_real[0] = _IQ(data[0]);
+        //out_real[0] = _IQ(data[0]);
     }
 }
 
-int32_t FFT_test(const int* data, int32_t* out, int samples, int sampling_rate)
+//Modifies data array
+int32_t FFT_test(int* data, int32_t* out, int samples, int sampling_rate)
 {
 	//_iq out_real[128];
-	_iq out_imag[256];
-	int i;
+	//_iq out_imag[128];
+	unsigned int i;
 	for (i = 0; i < samples; i++) {
-		//out_real[i] = 0;
-		out_imag[i] = 0;
+		out[i] = _IQ(data[reverseBits(i, 6)]);
 	}
-	iqfft_helper(data, out, out_imag, samples, 1);
-	//Fft_transformRadix2(out_real, out_imag, samples);
+	for (i = 0; i < samples; i++) {
+	    data[i] = 0;
+    }
+	iqfft_helper(out, data, samples, 1);
+
 	int32_t bucket, max = 0;
 	for (i = 0; i < samples; i++) {
-		out[i] = _IQint(_IQmag(out[i], out_imag[i]));
+		out[i] = _IQint(_IQmag(out[i], data[i]));
 		if (out[i] > max && i <= samples/2) {
 		    max = out[i];
 		    bucket = i;
