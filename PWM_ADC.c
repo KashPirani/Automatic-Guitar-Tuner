@@ -2,6 +2,7 @@
 #include "Board.h"
 #include "DFT.h"
 #include "stepper.h"
+#include "uart_io.h"
 
 #define BUFFER_SIZE 128
 
@@ -45,49 +46,6 @@ const int standard_tuning[6] = {82, 110, 147, 196, 247, 330};
                         0,0,1,3,5,7,10,13};
 */
 
-void printWord(char* word)
-{
-    while(*word)
-    {
-        EUSCI_A_UART_transmitData(EUSCI_A0_BASE, *word);
-        __delay_cycles(5000);
-        word++;
-    }
-    return;
-}
-
-void itoa(int32_t num) //TODO: fix this for large numbers
-{
-    if (num < 0) {
-        printWord("-");
-        num *= -1;
-    }
-    int32_t numLen = 0;
-    int32_t i = num;
-    while (i > 0)
-    {
-        i/=10;
-        numLen++;
-    }
-    char ret[32];
-    i = 0;
-    int32_t pow = 1;
-    for(;i<numLen-1; i++){
-        pow = pow*10;
-    }
-    int32_t dig = 0;
-    int32_t count = 0;
-    while(pow > 0)
-    {
-        dig = (num/pow) % 10;
-        ret[count] = dig + 48;
-        pow = pow/10;
-        count++;
-    }
-    ret[count] = '\0';
-    printWord(ret);
-}
-
 void main(void)
 {
     //Stop Watchdog Timer
@@ -123,56 +81,22 @@ void main(void)
 
     __bis_SR_register(GIE);
 
-    //Configure UART pins
-    GPIO_setAsPeripheralModuleFunctionInputPin(
-        GPIO_PORT_UCA0TXD,
-        GPIO_PIN_UCA0TXD,
-        GPIO_FUNCTION_UCA0TXD
-    );
-    GPIO_setAsPeripheralModuleFunctionInputPin(
-        GPIO_PORT_UCA0RXD,
-        GPIO_PIN_UCA0RXD,
-        GPIO_FUNCTION_UCA0RXD
-    );
-
     /*
      * Disable the GPIO power-on default high-impedance mode to activate
      * previously configured port settings
      */
     PMM_unlockLPM5();
 
-    //Configure UART
-    //SMCLK = 1MHz, Baudrate = 115200
-    //UCBRx = 8, UCBRFx = 0, UCBRSx = 0xD6, UCOS16 = 0
-    EUSCI_A_UART_initParam uparam = {0};
-    uparam.selectClockSource = EUSCI_A_UART_CLOCKSOURCE_SMCLK;
-    uparam.clockPrescalar = 6;
-    uparam.firstModReg = 8;
-    uparam.secondModReg = 0x20;
-    uparam.parity = EUSCI_A_UART_NO_PARITY;
-    uparam.msborLsbFirst = EUSCI_A_UART_LSB_FIRST;
-    uparam.numberofStopBits = EUSCI_A_UART_ONE_STOP_BIT;
-    uparam.uartMode = EUSCI_A_UART_MODE;
-    uparam.overSampling = EUSCI_A_UART_OVERSAMPLING_BAUDRATE_GENERATION;
-
-    if (STATUS_FAIL == EUSCI_A_UART_init(EUSCI_A0_BASE, &uparam)) {
-        return;
-    }
-
-    EUSCI_A_UART_enable(EUSCI_A0_BASE);
-
     // Enable global interrupts
     __enable_interrupt();
     ADC_startConversion(0x0700, ADC_REPEATED_SINGLECHANNEL);
     int runcount = 0;
+    int32_t cur_freq = 0;
     //turn_deg(360L);
     //__delay_cycles(1000000);
     //turn_deg(-180L);
     while (1)
     {
-
-        //itoa(buf[buf_count]);
-        //printWord("\r\n");
         if (buf_count==BUFFER_SIZE)
         {
             //itoa(DFT(buf,BUFFER_SIZE,31250));
@@ -188,7 +112,8 @@ void main(void)
                   printWord("\r\n");
             }
             printWord("\r\nFrequency: ");
-            itoa(FFT_test(buf16, out, BUFFER_SIZE, 11628));
+            cur_freq = FFT_test(buf16, out, BUFFER_SIZE, 11628);
+            itoa(cur_freq);
             printWord("\r\nFFT:\r\n");
             for(i=0; i<BUFFER_SIZE; i++)
             {
