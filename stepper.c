@@ -4,10 +4,14 @@
  *  Created on: May 24, 2019
  *      Author: tldibatt
  */
+#define GLOBAL_IQ 12
 
 #include "driverlib.h"
 #include "Board.h"
 #include "gpio.h"
+#include "IQmathLib.h"
+
+const _iq DEGREE_PER_HZ = 1;
 
 void stepper_init(){
     GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN3);
@@ -35,9 +39,9 @@ void unit_step(const uint8_t pos)
     HWREG16(baseAddress + OFS_PAOUT) = write;
 }
 
-void turn_deg(long deg)
+void turn_deg(int deg)
 {
-    long num_cycles = (deg * 4096) / (360 * 8); //4096 steps per 360 degrees, 8 steps per cycle
+    long num_cycles = (deg * 4096L) / (360 * 8); //4096 steps per 360 degrees, 8 steps per cycle
     long i;
 
     if (deg >= 0) {
@@ -82,5 +86,11 @@ void turn_deg(long deg)
     }
 
     unit_step(0x0);
+}
 
+void tune_peg(_iq curr_freq, _iq desired_freq)
+{
+    _iq difference = desired_freq - curr_freq;
+    int angle = _IQint(_IQmpy(difference, DEGREE_PER_HZ));
+    turn_deg(angle);
 }

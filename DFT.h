@@ -9,7 +9,7 @@
 #define DFT_H_
 
 #define GLOBAL_Q 6
-#define GLOBAL_IQ 12
+
 #include "QmathLib.h"
 #include "IQmathLib.h"
 
@@ -160,7 +160,7 @@ void iqfft_helper(_iq* out_real, _iq* out_imag, int samples, int step_size)
 }
 
 //Modifies data array
-int32_t FFT_test(int* data, int32_t* out, int samples, int sampling_rate)
+int32_t FFT_test(int32_t* data, int32_t* out, int samples, int sampling_rate)
 {
 	//_iq out_real[128];
 	//_iq out_imag[128];
