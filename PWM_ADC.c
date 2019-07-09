@@ -9,11 +9,11 @@
 #define BLINK_CYCLES 200000
 #define BUFFER_SIZE 128
 
-#define AMBER_LED_PORT GPIO_PORT_P1
-#define AMBER_LED_PIN GPIO_PIN0
+#define AMBER_LED_PORT GPIO_PORT_P2
+#define AMBER_LED_PIN GPIO_PIN5
 
-#define GREEN_LED_PORT GPIO_PORT_P4
-#define GREEN_LED_PIN GPIO_PIN0
+#define GREEN_LED_PORT GPIO_PORT_P2
+#define GREEN_LED_PIN GPIO_PIN7
 
 int buf16[BUFFER_SIZE];
 int32_t buf[BUFFER_SIZE];
@@ -29,7 +29,9 @@ _iq tuning_boundaries[6];
 const _iq error_boundaries[6] =  {_IQ(5), _IQ(7), _IQ(9), _IQ(12), _IQ(15), _IQ(20)};
 enum States {
     IDLE,
+    ENTER_WAIT_PLUCK,
     WAIT_PLUCK,
+    ENTER_SAMPLING,
     SAMPLING,
     PROCESSING,
 };
@@ -69,7 +71,7 @@ volatile enum States curr_state = IDLE;
 */
 
 void main(void)
-{
+                           {
     tuning_boundaries[0] = _IQdiv(_IQ(1),_IQ(2));
     tuning_boundaries[1] = _IQdiv(_IQ(65),_IQ(100));
     tuning_boundaries[2] = _IQdiv(_IQ(87),_IQ(100));
@@ -79,10 +81,12 @@ void main(void)
     //Stop Watchdog Timer
     WDT_A_hold(WDT_A_BASE);
 
+    CS_initFLLSettle(8000, 244);
+
     //Set ACLK = REFOCLK with clock divider of 1
     CS_initClockSignal(CS_ACLK,CS_REFOCLK_SELECT,CS_CLOCK_DIVIDER_1);
     //Set SMCLK = DCO with frequency divider of 1
-    CS_initClockSignal(CS_SMCLK,CS_DCOCLKDIV_SELECT,CS_CLOCK_DIVIDER_1);
+    CS_initClockSignal(CS_SMCLK,CS_DCOCLKDIV_SELECT,CS_CLOCK_DIVIDER_8);
     //Set MCLK = DCO with frequency divider of 1
     CS_initClockSignal(CS_MCLK,CS_DCOCLKDIV_SELECT,CS_CLOCK_DIVIDER_1);
 
@@ -91,10 +95,12 @@ void main(void)
 
     GPIO_setAsOutputPin(AMBER_LED_PORT, AMBER_LED_PIN);
     GPIO_setAsOutputPin(GREEN_LED_PORT, GREEN_LED_PIN);
+    GPIO_setOutputLowOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
+    GPIO_setOutputLowOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
 
     // Stepper set-up
     stepper_init();
-
+    turn_deg(1);
     // UART set-up
     uart_io_init();
 
@@ -113,11 +119,11 @@ void main(void)
 
     GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Analog Input
 
-    ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_SMCLK, ADC_CLOCKDIVIDER_4);
+    ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_SMCLK, ADC_CLOCKDIVIDER_32);
     ADC_enable(ADC_BASE);
-    ADC_setupSamplingTimer(ADC_BASE, ADC_CYCLEHOLD_8_CYCLES, ADC_MULTIPLESAMPLESENABLE);        // timer trigger needed to start every ADC conversion
+    ADC_setupSamplingTimer(ADC_BASE, ADC_CYCLEHOLD_16_CYCLES, ADC_MULTIPLESAMPLESENABLE);        // timer trigger needed to start every ADC conversion
     ADC_configureMemory(ADC_BASE, ADC_INPUT_A8, ADC_VREFPOS_INT, ADC_VREFNEG_AVSS);
-    ADC_setWindowComp(ADC_BASE, 300, 0);
+    ADC_setWindowComp(ADC_BASE, 648, 376);
     ADC_clearInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
     ADC_clearInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  bit mask of the interrupt flags to be cleared- for new conversion data in the memory buffer
     //ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  enable source to reflected to the processor interrupt
@@ -139,50 +145,96 @@ void main(void)
     //int runcount = 0;
     //int32_t cur_freq = 0;
     int i;
-    //ADC_startConversion(ADC_BASE, ADC_REPEATED_SINGLECHANNEL);
+    ADC_startConversion(ADC_BASE, ADC_REPEATED_SINGLECHANNEL);
     //turn_deg(360L);
-    //__delay_cycles(1000000);
+    //__delay_cycles(8000000);
     //turn_deg(-180L);
+
+
+    turn_deg(90);
     while (1)
     {
         switch (curr_state){
             case IDLE:
                 if (!GPIO_getInputPinValue(GPIO_PORT_P2, GPIO_PIN6)) {
-                    curr_state = WAIT_PLUCK;
+                    curr_state = ENTER_WAIT_PLUCK;
                     printWord("Button pressed\r\n");
-                    Timer_A_enableInterrupt(TIMER_A1_BASE);
-                    Timer_A_startCounter(TIMER_A1_BASE,TIMER_A_CONTINUOUS_MODE);
-                    //ADC_enableInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
                 }
+                break;
+            case ENTER_WAIT_PLUCK:
+                curr_state = WAIT_PLUCK;
+                printWord("Entering wait_pluck\r\n");
+                Timer_A_enableInterrupt(TIMER_A1_BASE);
+                Timer_A_startCounter(TIMER_A1_BASE,TIMER_A_CONTINUOUS_MODE);
+                ADC_enableInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
                 break;
             case WAIT_PLUCK:
                 printWord("Waiting for peak\r\n");
-                __delay_cycles(100000);
+                __delay_cycles(800000);
+                break;
+            case ENTER_SAMPLING:
+                ADC_disableInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
+                printWord("Entering Sampling\r\n");
+                curr_state = SAMPLING;
+                ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
+                Timer_A_disableInterrupt(TIMER_A1_BASE);
+                GPIO_setOutputHighOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
                 break;
             case SAMPLING:
                 printWord("Sampling\r\n");
-                __delay_cycles(100000);
+                __delay_cycles(800000);
                 break;
             case PROCESSING:
+                GPIO_setOutputHighOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
                 buf_count = 0;
-                curr_state = WAIT_PLUCK;
-                curr_freq = FFT_test(buf, out, BUFFER_SIZE, 1);
+                curr_state = ENTER_WAIT_PLUCK;
+                printWord("Running FFT\r\n");
+                //curr_freq = FFT_test(buf, out, BUFFER_SIZE, 1059);
+                //printWord("Frequency: ");
+                //itoa(curr_freq);
+                //printWord("\r\n");
+
+
+                printWord("\r\nInput:\r\n");
+                for (i = 0; i < BUFFER_SIZE; i++) {
+                      itoa(buf[i]);
+                      printWord("\r\n");
+                }
+                printWord("\r\nFrequency: ");
+                curr_freq = FFT_test16(buf16, out, BUFFER_SIZE, 1059);
+                itoa(curr_freq);
+                printWord("\r\nFFT:\r\n");
+                for(i=0; i<BUFFER_SIZE; i++)
+                {
+                    itoa(out[i]);
+                    printWord(", ");
+                    if (i % 16 == 0) {
+                        printWord("\r\n");
+                    }
+                }
+
+
                 if ( _IQabs(standard_tuning[curr_string] - curr_freq) <= tuning_boundaries[curr_string]) {
+                    printWord("String ");
+                    itoa(curr_string);
+                    printWord(" tuned, moving to next string\r\n");
                     curr_string++;
                     if (curr_string == 6) {
                         curr_string = 0;
                         curr_state = IDLE;
                     }
                 } else if ( _IQabs(standard_tuning[curr_string] - curr_freq) <= error_boundaries[curr_string]) {
+                    printWord("Turning peg\r\n");
                     tune_peg(curr_freq, standard_tuning[curr_string]);
-                    //ADC_enableInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
                 } else {
-                    for (i = 0; i < 6; i++) {
+                    for (i = 0; i < 12; i++) {
                         GPIO_toggleOutputOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
-                        GPIO_toggleOutputOnPin(AMBER_LED_PORT, GREEN_LED_PIN);
-                        __delay_cycles(100000);
+                        GPIO_toggleOutputOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
+                        __delay_cycles(1600000);
                     }
                 }
+                GPIO_setOutputLowOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
+                GPIO_setOutputLowOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
                 break;
         }
         /*if (buf_count==BUFFER_SIZE)
@@ -233,11 +285,7 @@ void ADC_ISR (void)
         case  4: break; //conversion time overflow
         case  6:        //ADCHI
             if (WAIT_PLUCK == curr_state) {
-                curr_state = SAMPLING;
-                //ADC_disableInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
-                ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
-                Timer_A_disableInterrupt(TIMER_A1_BASE);
-                GPIO_setOutputHighOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
+                curr_state = ENTER_SAMPLING;
             }
             break;
         case  8: break; //ADCLO
@@ -250,7 +298,6 @@ void ADC_ISR (void)
             {
                 if (SAMPLING == curr_state) {
                     curr_state = PROCESSING;
-                    GPIO_setOutputHighOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
                 }
                 ADC_disableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
             }
@@ -277,10 +324,10 @@ void TIMER1_A1_ISR (void)
             {
                     switch (blink_counter%2) {
                         case 0:
-                            GPIO_setOutputHighOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
+                            GPIO_setOutputHighOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
                             break;
                         case 1:
-                            GPIO_setOutputLowOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
+                            GPIO_setOutputLowOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
                             break;
                     }
             }

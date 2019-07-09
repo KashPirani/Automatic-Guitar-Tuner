@@ -131,6 +131,57 @@ unsigned int reverseBits(unsigned int num, unsigned int bits)
     return reverse_num;
 }
 
+void iqfft_helper16(const int* data, _iq* out_real, _iq* out_imag, int samples, int step_size)
+{
+    if (samples > 1) {
+        iqfft_helper16(data, out_real, out_imag, samples / 2, step_size * 2); //even
+        iqfft_helper16(data + step_size, out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
+
+        _iq factor_real, factor_imag, temp_real, temp_imag, cos_arg;
+        int i;
+        for (i = 0; i < samples/2; i++) {
+            temp_real = out_real[i];
+            temp_imag = out_imag[i];
+
+            cos_arg = _IQdiv(_IQmpy(IQ_2PI, _IQ(i)), _IQ(samples));
+
+            factor_real = _IQmpy(_IQcos(cos_arg), out_real[i + samples/2]) + _IQmpy(_IQsin(cos_arg), out_imag[i + samples/2]);
+            factor_imag = _IQmpy(_IQsin(cos_arg), -out_real[i + samples/2]) + _IQmpy(_IQcos(cos_arg), out_imag[i + samples/2]);
+
+            out_real[i] = temp_real + factor_real;
+            out_imag[i] = temp_imag + factor_imag;
+
+            out_real[i + samples/2] = temp_real - factor_real;
+            out_imag[i + samples/2] = temp_imag - factor_imag;
+        }
+    } else {
+        out_real[0] = _IQ(data[0]);
+    }
+}
+
+//Modifies data array
+int32_t FFT_test16(const int* data, int32_t* out, int samples, int sampling_rate)
+{
+    //_iq out_real[128];
+    _iq out_imag[128];
+    unsigned int i;
+    for (i = 0; i < samples; i++) {
+        out_imag[i] = 0;
+    }
+    iqfft_helper16(data, out, out_imag, samples, 1);
+
+    int32_t bucket, max = 0;
+    for (i = 0; i < samples; i++) {
+        out[i] = _IQint(_IQmag(out[i], out_imag[i]));
+        if (out[i] > max && i <= samples/2) {
+            max = out[i];
+            bucket = i;
+        }
+    }
+
+    return bucket * (sampling_rate / samples);
+}
+
 void iqfft_helper(_iq* out_real, _iq* out_imag, int samples, int step_size)
 {
     if (samples > 1) {

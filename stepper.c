@@ -11,13 +11,16 @@
 #include "gpio.h"
 #include "IQmathLib.h"
 
+#define STEP_DELAY 8000
+
 const _iq DEGREE_PER_HZ = 1;
+const uint8_t unit_steps[8] = {0x1, 0x3, 0x2, 0x6, 0x4, 0xC, 0x8, 0x9};
 
 void stepper_init(){
     GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN3);
     GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN4);
     GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN5);
-    GPIO_setAsOutputPin(GPIO_PORT_P2, GPIO_PIN5);
+    GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN6);
 }
 
 void unit_step(const uint8_t pos)
@@ -25,14 +28,12 @@ void unit_step(const uint8_t pos)
     uint16_t baseAddress = __MSP430_BASEADDRESS_PORT1_R__;
 
     uint16_t initial = HWREG16(baseAddress + OFS_PAOUT);
-    initial &= ~(0x2038);
+    initial &= ~(0x0078);
 
-    uint16_t write = pos & 0b0111;
+    uint16_t write = pos & 0b1010;
+    write |= (pos & 0b0100) >> 2;
+    write |= (pos & 0b0001) << 2;
     write <<= 3;
-
-    if (pos & 0b1000) {
-        write |= 0x2000;
-    }
 
     write |= initial;
 
@@ -41,47 +42,19 @@ void unit_step(const uint8_t pos)
 
 void turn_deg(int deg)
 {
-    long num_cycles = (deg * 4096L) / (360 * 8); //4096 steps per 360 degrees, 8 steps per cycle
+    long num_cycles = (deg * 4096L) / 360; //4096 steps per 360 degrees
     long i;
 
     if (deg >= 0) {
         for (i = 0; i < num_cycles; i++) {
-            unit_step(0x1);
-            __delay_cycles(1000);
-            unit_step(0x3);
-            __delay_cycles(1000);
-            unit_step(0x2);
-            __delay_cycles(1000);
-            unit_step(0x6);
-            __delay_cycles(1000);
-            unit_step(0x4);
-            __delay_cycles(1000);
-            unit_step(0xC);
-            __delay_cycles(1000);
-            unit_step(0x8);
-            __delay_cycles(1000);
-            unit_step(0x9);
-            __delay_cycles(1000);
+            unit_step(unit_steps[i % 8]);    //8 steps per cycle
+            __delay_cycles(STEP_DELAY);
         }
     } else {
         num_cycles *= -1;
-        for (i = 0; i < num_cycles; i++) {
-            unit_step(0x9);
-            __delay_cycles(1000);
-            unit_step(0x8);
-            __delay_cycles(1000);
-            unit_step(0xC);
-            __delay_cycles(1000);
-            unit_step(0x4);
-            __delay_cycles(1000);
-            unit_step(0x6);
-            __delay_cycles(1000);
-            unit_step(0x2);
-            __delay_cycles(1000);
-            unit_step(0x3);
-            __delay_cycles(1000);
-            unit_step(0x1);
-            __delay_cycles(1000);
+        for (i = num_cycles - 1; i >= 0; i--) {
+            unit_step(unit_steps[i % 8]);
+            __delay_cycles(STEP_DELAY);
         }
     }
 
