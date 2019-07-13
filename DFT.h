@@ -59,6 +59,46 @@ int DFT(int* data, int samples, int sample_rate)
     return bucket*(sample_rate/samples);
 }
 
+int iq_DFT(int32_t* data, int samples, int sample_rate)
+{
+    int n = 0;
+    int k = 0;
+    _iq max = 0;
+    _iq real;
+    _iq imag;
+    _iq temp;
+    int bucket = 0;
+
+    _iq cos_mod = 0;
+    _iq cos_arg = 0;
+    //_q q_data = 0;
+
+
+    for (; n<samples; n++) {
+        real = 0;
+        imag = 0;
+        temp = 0;
+        for (k=0;k<samples;k++) {
+            cos_mod = _IQ(n*k % samples);
+            cos_arg = _IQdiv(_IQmpy(IQ_2PI, cos_mod), _IQ(samples));
+            //q_data = _Q(data[k]);
+
+            real +=_IQmpy(_IQ(data[k]), _IQcos(cos_arg));
+            imag +=_IQmpy(_IQ(data[k]), _IQsin(cos_arg));
+            //real = data[k]*cos((2*M_PI*n*k)/samples);
+            //imag = data[k]*sin((2*M_PI*n*k)/samples);
+        }
+
+        temp = _IQmag(imag, real);
+        if (temp > max && n!=0)
+        {
+            max = temp;
+            bucket = n;
+        }
+    }
+    return bucket*(sample_rate/samples);
+}
+
 void DFT_test(int* data, int* out, int samples, int sample_rate)
 {
     int n = 0;
@@ -163,7 +203,7 @@ void iqfft_helper16(const int* data, _iq* out_real, _iq* out_imag, int samples, 
 int32_t FFT_test16(const int* data, int32_t* out, int samples, int sampling_rate)
 {
     //_iq out_real[128];
-    _iq out_imag[128];
+    _iq out_imag[64];
     unsigned int i;
     for (i = 0; i < samples; i++) {
         out_imag[i] = 0;
@@ -217,7 +257,7 @@ int32_t FFT_test(int32_t* data, int32_t* out, int samples, int sampling_rate)
 	//_iq out_imag[128];
 	unsigned int i;
 	for (i = 0; i < samples; i++) {
-		out[i] = _IQ(data[reverseBits(i, 6)]);
+		out[i] = _IQ(data[reverseBits(i, 7)]);
 	}
 	for (i = 0; i < samples; i++) {
 	    data[i] = 0;

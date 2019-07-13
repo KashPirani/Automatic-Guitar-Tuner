@@ -15,7 +15,7 @@
 #define GREEN_LED_PORT GPIO_PORT_P2
 #define GREEN_LED_PIN GPIO_PIN7
 
-int buf16[BUFFER_SIZE];
+//int buf16[BUFFER_SIZE];
 int32_t buf[BUFFER_SIZE];
 int32_t out[BUFFER_SIZE];
 //int out_dft[BUFFER_SIZE];
@@ -118,6 +118,7 @@ void main(void)
     // ADC set-up
 
     GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Analog Input
+    GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN7);
 
     ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_SMCLK, ADC_CLOCKDIVIDER_32);
     ADC_enable(ADC_BASE);
@@ -148,16 +149,16 @@ void main(void)
     ADC_startConversion(ADC_BASE, ADC_REPEATED_SINGLECHANNEL);
     //turn_deg(360L);
     //__delay_cycles(8000000);
-    //turn_deg(-180L);
+    //turn_deg(-360L);
 
 
-    turn_deg(90);
+    //turn_deg(90);
     while (1)
     {
         switch (curr_state){
             case IDLE:
                 if (!GPIO_getInputPinValue(GPIO_PORT_P2, GPIO_PIN6)) {
-                    curr_state = ENTER_WAIT_PLUCK;
+                    curr_state = ENTER_SAMPLING;
                     printWord("Button pressed\r\n");
                 }
                 break;
@@ -185,6 +186,7 @@ void main(void)
                 __delay_cycles(800000);
                 break;
             case PROCESSING:
+                GPIO_setOutputLowOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
                 GPIO_setOutputHighOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
                 buf_count = 0;
                 curr_state = ENTER_WAIT_PLUCK;
@@ -198,10 +200,15 @@ void main(void)
                 printWord("\r\nInput:\r\n");
                 for (i = 0; i < BUFFER_SIZE; i++) {
                       itoa(buf[i]);
-                      printWord("\r\n");
+                      printWord(", ");
+                      if (i % 16 == 15) {
+                          printWord("\r\n");
+                      }
                 }
                 printWord("\r\nFrequency: ");
-                curr_freq = FFT_test16(buf16, out, BUFFER_SIZE, 1059);
+                //curr_freq = FFT_test16(buf16, out, BUFFER_SIZE, 1059);
+                //curr_freq = FFT_test(buf, out, BUFFER_SIZE, 1059);
+                curr_freq = iq_DFT(buf, BUFFER_SIZE, 1059);
                 itoa(curr_freq);
                 printWord("\r\nFFT:\r\n");
                 for(i=0; i<BUFFER_SIZE; i++)
@@ -214,7 +221,7 @@ void main(void)
                 }
 
 
-                if ( _IQabs(standard_tuning[curr_string] - curr_freq) <= tuning_boundaries[curr_string]) {
+                if ( _IQabs(standard_tuning[curr_string] - _IQ(curr_freq)) <= tuning_boundaries[curr_string]) {
                     printWord("String ");
                     itoa(curr_string);
                     printWord(" tuned, moving to next string\r\n");
@@ -223,10 +230,11 @@ void main(void)
                         curr_string = 0;
                         curr_state = IDLE;
                     }
-                } else if ( _IQabs(standard_tuning[curr_string] - curr_freq) <= error_boundaries[curr_string]) {
+                } else if ( _IQabs(standard_tuning[curr_string] - _IQ(curr_freq)) <= error_boundaries[curr_string]) {
                     printWord("Turning peg\r\n");
-                    tune_peg(curr_freq, standard_tuning[curr_string]);
+                    tune_peg(_IQ(curr_freq), standard_tuning[curr_string]);
                 } else {
+                    printWord("Error, going back to WAIT_PLUCK\r\n");
                     for (i = 0; i < 12; i++) {
                         GPIO_toggleOutputOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
                         GPIO_toggleOutputOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
@@ -235,6 +243,10 @@ void main(void)
                 }
                 GPIO_setOutputLowOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
                 GPIO_setOutputLowOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
+                break;
+            default:
+                printWord("what just happened\r\n");
+                __delay_cycles(100000);
                 break;
         }
         /*if (buf_count==BUFFER_SIZE)
@@ -291,16 +303,17 @@ void ADC_ISR (void)
         case  8: break; //ADCLO
         case 10: break; //ADCIN
         case 12:        //ADCIFG0 is ADC interrupt flag
-            buf16[buf_count] = (ADC_getResults(ADC_BASE) - 512);
-            buf[buf_count] = buf16[buf_count];
-            buf_count++;
-            if (buf_count == BUFFER_SIZE)
-            {
-                if (SAMPLING == curr_state) {
-                    curr_state = PROCESSING;
-                }
-                ADC_disableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
-            }
+            GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN3);
+            //buf[buf_count] = (ADC_getResults(ADC_BASE) - 512);
+            //buf[buf_count] = buf16[buf_count];
+            //buf_count++;
+            //if (buf_count == BUFFER_SIZE)
+            //{
+            //    if (SAMPLING == curr_state) {
+            //        curr_state = PROCESSING;
+            //    }
+            //    ADC_disableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
+            //}
             break;
         default: break;
     }
