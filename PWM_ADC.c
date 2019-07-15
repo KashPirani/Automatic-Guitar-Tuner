@@ -15,14 +15,27 @@
 #define GREEN_LED_PORT GPIO_PORT_P2
 #define GREEN_LED_PIN GPIO_PIN7
 
+char print_str[16];
+
 //int buf16[BUFFER_SIZE];
 int32_t buf[BUFFER_SIZE];
 int32_t out[BUFFER_SIZE];
 //int out_dft[BUFFER_SIZE];
 int buf_count = 0;
-int curr_freq = 0;
-int curr_string = 4;
+_iq curr_freq = 0;
+int curr_string = 0;
 int blink_counter = 0;
+
+const int sampling_freqs[6] = {234, 273, 328, 546, 546, 819};
+const uint16_t sampling_settings[6][2] =
+{
+    {ADC_CLOCKDIVIDER_7, ADC_CYCLEHOLD_8_CYCLES},
+    {ADC_CLOCKDIVIDER_6, ADC_CYCLEHOLD_8_CYCLES},
+    {ADC_CLOCKDIVIDER_5, ADC_CYCLEHOLD_8_CYCLES},
+    {ADC_CLOCKDIVIDER_3, ADC_CYCLEHOLD_8_CYCLES},
+    {ADC_CLOCKDIVIDER_3, ADC_CYCLEHOLD_8_CYCLES},
+    {ADC_CLOCKDIVIDER_2, ADC_CYCLEHOLD_8_CYCLES}
+};
 
 const _iq standard_tuning[6] = {_IQ(82), _IQ(110), _IQ(147), _IQ(196), _IQ(247), _IQ(330)};
 _iq tuning_boundaries[6];
@@ -70,14 +83,27 @@ volatile enum States curr_state = IDLE;
                         0,0,1,3,5,7,10,13};
 */
 
+void reset_adc(uint16_t clk_div, uint16_t t_sample)
+{
+    ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_ACLK, clk_div);
+    ADC_enable(ADC_BASE);
+    ADC_setupSamplingTimer(ADC_BASE, t_sample, ADC_MULTIPLESAMPLESENABLE);        // timer trigger needed to start every ADC conversion
+    ADC_configureMemory(ADC_BASE, ADC_INPUT_A8, ADC_VREFPOS_INT, ADC_VREFNEG_AVSS);
+    ADC_setWindowComp(ADC_BASE, 648, 376);
+    ADC_clearInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
+    ADC_clearInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  bit mask of the interrupt flags to be cleared- for new conversion data in the memory buffer
+    //ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  enable source to reflected to the processor interrupt
+}
+
 void main(void)
-                           {
+{
     tuning_boundaries[0] = _IQdiv(_IQ(1),_IQ(2));
     tuning_boundaries[1] = _IQdiv(_IQ(65),_IQ(100));
     tuning_boundaries[2] = _IQdiv(_IQ(87),_IQ(100));
     tuning_boundaries[3] = _IQdiv(_IQ(117),_IQ(100));
     tuning_boundaries[4] = _IQdiv(_IQ(147),_IQ(100));
     tuning_boundaries[5] = _IQdiv(_IQ(196),_IQ(100));
+
     //Stop Watchdog Timer
     WDT_A_hold(WDT_A_BASE);
 
@@ -118,16 +144,9 @@ void main(void)
     // ADC set-up
 
     GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Analog Input
-    GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN7);
+    //GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN7);
 
-    ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_SMCLK, ADC_CLOCKDIVIDER_32);
-    ADC_enable(ADC_BASE);
-    ADC_setupSamplingTimer(ADC_BASE, ADC_CYCLEHOLD_16_CYCLES, ADC_MULTIPLESAMPLESENABLE);        // timer trigger needed to start every ADC conversion
-    ADC_configureMemory(ADC_BASE, ADC_INPUT_A8, ADC_VREFPOS_INT, ADC_VREFNEG_AVSS);
-    ADC_setWindowComp(ADC_BASE, 648, 376);
-    ADC_clearInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
-    ADC_clearInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  bit mask of the interrupt flags to be cleared- for new conversion data in the memory buffer
-    //ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  enable source to reflected to the processor interrupt
+    reset_adc(sampling_settings[curr_string][0], sampling_settings[curr_string][1]);
 
     while (PMM_REFGEN_NOTREADY == PMM_getVariableReferenceVoltageStatus()) ;
 
@@ -146,19 +165,16 @@ void main(void)
     //int runcount = 0;
     //int32_t cur_freq = 0;
     int i;
-    ADC_startConversion(ADC_BASE, ADC_REPEATED_SINGLECHANNEL);
     //turn_deg(360L);
     //__delay_cycles(8000000);
     //turn_deg(-360L);
-
-
     //turn_deg(90);
     while (1)
     {
         switch (curr_state){
             case IDLE:
                 if (!GPIO_getInputPinValue(GPIO_PORT_P2, GPIO_PIN6)) {
-                    curr_state = ENTER_SAMPLING;
+                    curr_state = ENTER_WAIT_PLUCK;
                     printWord("Button pressed\r\n");
                 }
                 break;
@@ -167,6 +183,7 @@ void main(void)
                 printWord("Entering wait_pluck\r\n");
                 Timer_A_enableInterrupt(TIMER_A1_BASE);
                 Timer_A_startCounter(TIMER_A1_BASE,TIMER_A_CONTINUOUS_MODE);
+                ADC_startConversion(ADC_BASE, ADC_REPEATED_SINGLECHANNEL);
                 ADC_enableInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
                 break;
             case WAIT_PLUCK:
@@ -206,35 +223,39 @@ void main(void)
                       }
                 }
                 printWord("\r\nFrequency: ");
-                //curr_freq = FFT_test16(buf16, out, BUFFER_SIZE, 1059);
-                //curr_freq = FFT_test(buf, out, BUFFER_SIZE, 1059);
-                curr_freq = iq_DFT(buf, BUFFER_SIZE, 1059);
-                itoa(curr_freq);
-                printWord("\r\nFFT:\r\n");
+                //curr_freq = FFT_test16(buf16, out, BUFFER_SIZE, 1170);
+                curr_freq = FFT_test(buf, out, BUFFER_SIZE, sampling_freqs[curr_string]);
+                //curr_freq = iq_DFT(buf, BUFFER_SIZE, 1170);
+                _IQtoa(print_str, "%4.6f", curr_freq);
+                printWord(print_str);
+                printWord(" Hz\r\nFFT:\r\n");
                 for(i=0; i<BUFFER_SIZE; i++)
                 {
-                    itoa(out[i]);
+                    itoa(_IQint(out[i]));
                     printWord(", ");
                     if (i % 16 == 0) {
                         printWord("\r\n");
                     }
                 }
+                printWord("\r\n");
 
-
-                if ( _IQabs(standard_tuning[curr_string] - _IQ(curr_freq)) <= tuning_boundaries[curr_string]) {
+                if ( _IQabs(standard_tuning[curr_string] - curr_freq) <= tuning_boundaries[curr_string]) {
                     printWord("String ");
                     itoa(curr_string);
                     printWord(" tuned, moving to next string\r\n");
                     curr_string++;
                     if (curr_string == 6) {
+                        printWord("~GUITAR IS NOW IN TUNE~\r\n");
                         curr_string = 0;
                         curr_state = IDLE;
                     }
-                } else if ( _IQabs(standard_tuning[curr_string] - _IQ(curr_freq)) <= error_boundaries[curr_string]) {
+                    reset_adc(sampling_settings[curr_string][0], sampling_settings[curr_string][1]);
+                } else if ( _IQabs(standard_tuning[curr_string] - curr_freq) <= error_boundaries[curr_string]) {
                     printWord("Turning peg\r\n");
-                    tune_peg(_IQ(curr_freq), standard_tuning[curr_string]);
+                    tune_peg(curr_freq, standard_tuning[curr_string], curr_string);
                 } else {
                     printWord("Error, going back to WAIT_PLUCK\r\n");
+                    GPIO_setOutputHighOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
                     for (i = 0; i < 12; i++) {
                         GPIO_toggleOutputOnPin(GREEN_LED_PORT, GREEN_LED_PIN);
                         GPIO_toggleOutputOnPin(AMBER_LED_PORT, AMBER_LED_PIN);
@@ -303,17 +324,18 @@ void ADC_ISR (void)
         case  8: break; //ADCLO
         case 10: break; //ADCIN
         case 12:        //ADCIFG0 is ADC interrupt flag
-            GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN3);
-            //buf[buf_count] = (ADC_getResults(ADC_BASE) - 512);
+            //GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN3);
+            //GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN3);
+            buf[buf_count] = (ADC_getResults(ADC_BASE) - 512);
             //buf[buf_count] = buf16[buf_count];
-            //buf_count++;
-            //if (buf_count == BUFFER_SIZE)
-            //{
-            //    if (SAMPLING == curr_state) {
-            //        curr_state = PROCESSING;
-            //    }
-            //    ADC_disableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
-            //}
+            buf_count++;
+            if (buf_count == BUFFER_SIZE)
+            {
+                if (SAMPLING == curr_state) {
+                    curr_state = PROCESSING;
+                }
+                ADC_disableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
+            }
             break;
         default: break;
     }

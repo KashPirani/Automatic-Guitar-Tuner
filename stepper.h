@@ -11,6 +11,6 @@
 void stepper_init(void);
 void unit_step(uint8_t pos);
 void turn_deg(long deg);
-void tune_peg(_q curr_freq, _q desired_freq);
+void tune_peg(_iq curr_freq, _iq desired_freq, int curr_string);
 
 #endif /* STEPPER_H_ */

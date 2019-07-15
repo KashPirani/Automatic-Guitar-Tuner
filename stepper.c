@@ -13,7 +13,8 @@
 
 #define STEP_DELAY 8000
 
-const _iq DEGREE_PER_HZ = 1;
+const _iq DEGREE_PER_HZ = 10;
+const _iq degrees_per_hz[6] = {_IQ(30), _IQ(25), _IQ(21), _IQ(16), _IQ(12), _IQ(7)};
 const uint8_t unit_steps[8] = {0x1, 0x3, 0x2, 0x6, 0x4, 0xC, 0x8, 0x9};
 
 void stepper_init(){
@@ -61,9 +62,9 @@ void turn_deg(int deg)
     unit_step(0x0);
 }
 
-void tune_peg(_iq curr_freq, _iq desired_freq)
+void tune_peg(_iq curr_freq, _iq desired_freq, int curr_string)
 {
-    _iq difference = desired_freq - curr_freq;
-    int angle = _IQint(_IQmpy(difference, DEGREE_PER_HZ));
+    _iq difference = curr_freq - desired_freq;
+    long angle = _IQint(_IQmpy(difference, degrees_per_hz[curr_string]));
     turn_deg(angle);
 }

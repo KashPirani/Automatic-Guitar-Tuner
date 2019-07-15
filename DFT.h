@@ -9,6 +9,7 @@
 #define DFT_H_
 
 #define GLOBAL_Q 6
+#define LOG_SAMPLES 7
 
 #include "QmathLib.h"
 #include "IQmathLib.h"
@@ -171,57 +172,6 @@ unsigned int reverseBits(unsigned int num, unsigned int bits)
     return reverse_num;
 }
 
-void iqfft_helper16(const int* data, _iq* out_real, _iq* out_imag, int samples, int step_size)
-{
-    if (samples > 1) {
-        iqfft_helper16(data, out_real, out_imag, samples / 2, step_size * 2); //even
-        iqfft_helper16(data + step_size, out_real + samples/2, out_imag + samples/2, samples / 2, step_size * 2); //odd
-
-        _iq factor_real, factor_imag, temp_real, temp_imag, cos_arg;
-        int i;
-        for (i = 0; i < samples/2; i++) {
-            temp_real = out_real[i];
-            temp_imag = out_imag[i];
-
-            cos_arg = _IQdiv(_IQmpy(IQ_2PI, _IQ(i)), _IQ(samples));
-
-            factor_real = _IQmpy(_IQcos(cos_arg), out_real[i + samples/2]) + _IQmpy(_IQsin(cos_arg), out_imag[i + samples/2]);
-            factor_imag = _IQmpy(_IQsin(cos_arg), -out_real[i + samples/2]) + _IQmpy(_IQcos(cos_arg), out_imag[i + samples/2]);
-
-            out_real[i] = temp_real + factor_real;
-            out_imag[i] = temp_imag + factor_imag;
-
-            out_real[i + samples/2] = temp_real - factor_real;
-            out_imag[i + samples/2] = temp_imag - factor_imag;
-        }
-    } else {
-        out_real[0] = _IQ(data[0]);
-    }
-}
-
-//Modifies data array
-int32_t FFT_test16(const int* data, int32_t* out, int samples, int sampling_rate)
-{
-    //_iq out_real[128];
-    _iq out_imag[64];
-    unsigned int i;
-    for (i = 0; i < samples; i++) {
-        out_imag[i] = 0;
-    }
-    iqfft_helper16(data, out, out_imag, samples, 1);
-
-    int32_t bucket, max = 0;
-    for (i = 0; i < samples; i++) {
-        out[i] = _IQint(_IQmag(out[i], out_imag[i]));
-        if (out[i] > max && i <= samples/2) {
-            max = out[i];
-            bucket = i;
-        }
-    }
-
-    return bucket * (sampling_rate / samples);
-}
-
 void iqfft_helper(_iq* out_real, _iq* out_imag, int samples, int step_size)
 {
     if (samples > 1) {
@@ -251,29 +201,60 @@ void iqfft_helper(_iq* out_real, _iq* out_imag, int samples, int step_size)
 }
 
 //Modifies data array
-int32_t FFT_test(int32_t* data, int32_t* out, int samples, int sampling_rate)
+_iq FFT_test(int32_t* data, int32_t* out, int samples, int sampling_rate)
 {
 	//_iq out_real[128];
 	//_iq out_imag[128];
-	unsigned int i;
+	unsigned int i, k, j;
+	//unsigned int m = 1;
 	for (i = 0; i < samples; i++) {
-		out[i] = _IQ(data[reverseBits(i, 7)]);
+		out[i] = _IQ(data[reverseBits(i, LOG_SAMPLES)]);
 	}
 	for (i = 0; i < samples; i++) {
 	    data[i] = 0;
     }
 	iqfft_helper(out, data, samples, 1);
+	/*_iq factor_real, factor_imag, temp_real, temp_imag, real_arg, imag_arg, real_mult, imag_mult;
+	for (i = 1; i <= LOG_SAMPLES; i++) {
+	    m <<= 1;
+	    real_mult = _IQcos(_IQdiv(IQ_2PI, _IQ(m)));
+	    imag_mult = -_IQsin(_IQdiv(IQ_2PI, _IQ(m)));
+	    for (k = 0; k < samples; k += m) {
+	        real_arg = 1;
+	        imag_arg = 1;
+	        for (j = 0; j < m/2; j++) {
+	            factor_real = _IQmpy(real_arg, out[k + j + m/2]);
+	            factor_imag = _IQmpy(imag_arg, data[k + j + m/2]);
 
-	int32_t bucket, max = 0;
+	            temp_real = out[k + j];
+	            temp_imag = data[k + j];
+
+	            out[k + j] = temp_real + factor_real;
+	            data[k + j] = temp_imag + factor_imag;
+
+                out[k + j + m/2] = temp_real - factor_real;
+                data[k + j + m/2] = temp_imag - factor_imag;
+
+                real_arg = _IQmpy(real_arg, real_mult);
+                imag_arg = _IQmpy(imag_arg, imag_mult);
+	        }
+	    }
+	}*/
+
+	_iq bucket, max = 0;
 	for (i = 0; i < samples; i++) {
-		out[i] = _IQint(_IQmag(out[i], data[i]));
+		out[i] = _IQmag(out[i], data[i]);
 		if (out[i] > max && i <= samples/2) {
 		    max = out[i];
 		    bucket = i;
 		}
 	}
+	_iq d;
+	//d = _IQdiv((out[bucket+1] - out[bucket-1]), ((out[bucket]<<1)-out[bucket-1]-out[bucket+1])<<1);
+    d = _IQdiv((out[bucket+1] - out[bucket-1]), (out[bucket]+out[bucket-1]+out[bucket+1]));
+	bucket = _IQ(bucket)+d;
 
-	return bucket * (sampling_rate / samples);
+	return _IQmpy(bucket, _IQdiv(_IQ(sampling_rate), _IQ(samples)));
 }
 
 int fft_helper(int* data, int* out, int samples, int step_size)
