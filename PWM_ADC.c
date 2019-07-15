@@ -17,10 +17,8 @@
 
 char print_str[16];
 
-//int buf16[BUFFER_SIZE];
 int32_t buf[BUFFER_SIZE];
 int32_t out[BUFFER_SIZE];
-//int out_dft[BUFFER_SIZE];
 int buf_count = 0;
 _iq curr_freq = 0;
 int curr_string = 0;
@@ -51,38 +49,6 @@ enum States {
 
 volatile enum States curr_state = IDLE;
 
-/*const int data_buffer[128] = {256,306,354,398,437,469,493,507,
-512,507,493,469,437,398,354,306,
-256,206,158,114,75,43,19,5,
-0,5,19,43,75,114,158,206,256,306,354,398,437,469,493,507,
-512,507,493,469,437,398,354,306,
-256,206,158,114,75,43,19,5,
-0,5,19,43,75,114,158,206,256,306,354,398,437,469,493,507,
-512,507,493,469,437,398,354,306,
-256,206,158,114,75,43,19,5,
-0,5,19,43,75,114,158,206,256,306,354,398,437,469,493,507,
-512,507,493,469,437,398,354,306,
-256,206,158,114,75,43,19,5,
-0,5,19,43,75,114,158,206};
-*/
-/*const int data_buffer[128] = {16,19,22,25,27,29,31,32,
-                        32,32,31,29,27,25,22,19,
-                        16,13,10,7,5,3,1,0,
-                        0,0,1,3,5,7,10,13,
-                        16,19,22,25,27,29,31,32,
-                        32,32,31,29,27,25,22,19,
-                        16,13,10,7,5,3,1,0,
-                        0,0,1,3,5,7,10,13,
-                        16,19,22,25,27,29,31,32,
-                        32,32,31,29,27,25,22,19,
-                        16,13,10,7,5,3,1,0,
-                        0,0,1,3,5,7,10,13,
-                        16,19,22,25,27,29,31,32,
-                        32,32,31,29,27,25,22,19,
-                        16,13,10,7,5,3,1,0,
-                        0,0,1,3,5,7,10,13};
-*/
-
 void reset_adc(uint16_t clk_div, uint16_t t_sample)
 {
     ADC_init(ADC_BASE, ADC_SAMPLEHOLDSOURCE_SC, ADC_CLOCKSOURCE_ACLK, clk_div);
@@ -92,7 +58,6 @@ void reset_adc(uint16_t clk_div, uint16_t t_sample)
     ADC_setWindowComp(ADC_BASE, 648, 376);
     ADC_clearInterrupt(ADC_BASE, ADC_ABOVETHRESHOLD_INTERRUPT);
     ADC_clearInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  bit mask of the interrupt flags to be cleared- for new conversion data in the memory buffer
-    //ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);       //  enable source to reflected to the processor interrupt
 }
 
 void main(void)
@@ -134,9 +99,7 @@ void main(void)
     Timer_A_initContinuousModeParam param = {0};
     param.clockSource = TIMER_A_CLOCKSOURCE_SMCLK;
     param.clockSourceDivider = TIMER_A_CLOCKSOURCE_DIVIDER_3;
-    //param.timerPeriod = 12500;
     param.timerInterruptEnable_TAIE = TIMER_A_TAIE_INTERRUPT_DISABLE;
-    //param.captureCompareInterruptEnable_CCR0_CCIE = TIMER_A_CCIE_CCR0_INTERRUPT_DISABLE;
     param.timerClear = TIMER_A_DO_CLEAR;
     param.startTimer = false;
     Timer_A_initContinuousMode(TIMER_A1_BASE, &param);
@@ -144,7 +107,6 @@ void main(void)
     // ADC set-up
 
     GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_ADC8, GPIO_PIN_ADC8, GPIO_FUNCTION_ADC8); // ADC Analog Input
-    //GPIO_setAsOutputPin(GPIO_PORT_P1, GPIO_PIN7);
 
     reset_adc(sampling_settings[curr_string][0], sampling_settings[curr_string][1]);
 
@@ -162,13 +124,7 @@ void main(void)
 
     // Enable global interrupts
     __enable_interrupt();
-    //int runcount = 0;
-    //int32_t cur_freq = 0;
     int i;
-    //turn_deg(360L);
-    //__delay_cycles(8000000);
-    //turn_deg(-360L);
-    //turn_deg(90);
     while (1)
     {
         switch (curr_state){
@@ -208,10 +164,6 @@ void main(void)
                 buf_count = 0;
                 curr_state = ENTER_WAIT_PLUCK;
                 printWord("Running FFT\r\n");
-                //curr_freq = FFT_test(buf, out, BUFFER_SIZE, 1059);
-                //printWord("Frequency: ");
-                //itoa(curr_freq);
-                //printWord("\r\n");
 
 
                 printWord("\r\nInput:\r\n");
@@ -223,9 +175,7 @@ void main(void)
                       }
                 }
                 printWord("\r\nFrequency: ");
-                //curr_freq = FFT_test16(buf16, out, BUFFER_SIZE, 1170);
                 curr_freq = FFT_test(buf, out, BUFFER_SIZE, sampling_freqs[curr_string]);
-                //curr_freq = iq_DFT(buf, BUFFER_SIZE, 1170);
                 _IQtoa(print_str, "%4.6f", curr_freq);
                 printWord(print_str);
                 printWord(" Hz\r\nFFT:\r\n");
@@ -270,37 +220,6 @@ void main(void)
                 __delay_cycles(100000);
                 break;
         }
-        /*if (buf_count==BUFFER_SIZE)
-        {
-            //itoa(DFT(buf,BUFFER_SIZE,31250));
-            //printWord("\r\n");
-            //fft_helper(data_buffer, out, BUFFER_SIZE, 1);
-            //DFT_test(data_buffer, out_dft, BUFFER_SIZE, 31250);
-            int i;
-            printWord("\r\nInput:\r\n");
-            for (i = 0; i < BUFFER_SIZE; i++) {
-                  itoa(buf[i]);
-                  printWord(",");
-                  itoa(buf[i]);
-                  printWord("\r\n");
-            }
-            printWord("\r\nFrequency: ");
-            cur_freq = FFT_test(buf16, out, BUFFER_SIZE, 11628);
-            itoa(cur_freq);
-            printWord("\r\nFFT:\r\n");
-            for(i=0; i<BUFFER_SIZE; i++)
-            {
-                itoa(out[i]);
-                printWord(", ");
-                if (i % 16 == 0) {
-                    printWord("\r\n");
-                }
-            }
-            printWord("\r\n");
-            runcount++;
-            buf_count = 0;
-            ADC_enableInterrupt(ADC_BASE, ADC_COMPLETED_INTERRUPT);
-        }*/
     }
 }
 //ADC ISR
@@ -324,10 +243,7 @@ void ADC_ISR (void)
         case  8: break; //ADCLO
         case 10: break; //ADCIN
         case 12:        //ADCIFG0 is ADC interrupt flag
-            //GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN3);
-            //GPIO_toggleOutputOnPin(GPIO_PORT_P1, GPIO_PIN3);
             buf[buf_count] = (ADC_getResults(ADC_BASE) - 512);
-            //buf[buf_count] = buf16[buf_count];
             buf_count++;
             if (buf_count == BUFFER_SIZE)
             {
@@ -378,30 +294,3 @@ void TIMER1_A1_ISR (void)
         default: break;
     }
 }
-
-////******************************************************************************
-////
-////This is the USCI_A0 interrupt vector service routine.
-////
-////******************************************************************************
-//#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-//#pragma vector=USCI_A0_VECTOR
-//__interrupt
-//#elif defined(__GNUC__)
-//__attribute__((interrupt(USCI_A0_VECTOR)))
-//#endif
-//void EUSCI_A0_ISR(void)
-//{
-//    switch(__even_in_range(UCA0IV,USCI_UART_UCTXCPTIFG))
-//    {
-//        case USCI_NONE: break;
-//        case USCI_UART_UCRXIFG: break;
-//        case USCI_UART_UCTXIFG:
-//            buf = 'f';
-//            break;
-//        case USCI_UART_UCSTTIFG: break;
-//        case USCI_UART_UCTXCPTIFG:
-//           break;
-//    }
-//}
-
